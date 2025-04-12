@@ -3,29 +3,34 @@ import pandas as pd
 import sqlite3
 import time
 from datetime import datetime, timedelta
+from utils.logger import log
 
-API_KEY_ADV = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwMjE3djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc1OTI2NTQ4NywiaWQiOiIwMTk1ZjA4Yy02MmM5LTczZWUtYTk3NS1hOGM1ZGIxZTIyNzAiLCJpaWQiOjQ2MTg0MjIyLCJvaWQiOjEyNTE1MiwicyI6NjQsInNpZCI6ImQ1MTcyZDM4LWNjZjQtNDY3NS05Nzc1LWUzY2FhZTM1ODEzZCIsInQiOmZhbHNlLCJ1aWQiOjQ2MTg0MjIyfQ.9HUrbPlA6BpTm5Ru9yyLJVfDGUhbGgeaHM6Oob0RMz2M1EUIGgL0NxwrmUgiI_YDaxBUPHv_5yQd_O_Xa2DADA"  # <-- Вставь свой токен
+# === Настройки ===
+API_KEY_ADV = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwMjE3djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc1OTI2NTQ4NywiaWQiOiIwMTk1ZjA4Yy02MmM5LTczZWUtYTk3NS1hOGM1ZGIxZTIyNzAiLCJpaWQiOjQ2MTg0MjIyLCJvaWQiOjEyNTE1MiwicyI6NjQsInNpZCI6ImQ1MTcyZDM4LWNjZjQtNDY3NS05Nzc1LWUzY2FhZTM1ODEzZCIsInQiOmZhbHNlLCJ1aWQiOjQ2MTg0MjIyfQ.9HUrbPlA6BpTm5Ru9yyLJVfDGUhbGgeaHM6Oob0RMz2M1EUIGgL0NxwrmUgiI_YDaxBUPHv_5yQd_O_Xa2DADA"  # ← вставь свой токен для рекламы Wildberries
 DB_PATH = "data/wb.db"
-CAMPAIGN_MAP = {
-    221271976: 19615675
+
+# === Артикулы и ID кампаний (сопоставление вручную) ===
+campaign_map = {
+    241733698: 21138230,  # Пример: артикул: ID рекламной кампании
+    # Добавляй по аналогии
 }
-DAYS = 30
 
 def parse_ads():
-    print("🔄 Запуск парсера рекламы (ads)")
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
+        conn = sqlite3.connect(DB_PATH)
+        end_date = datetime.today()
+        dates = [(end_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(29, -1, -1)]
+        log(f"📅 Диапазон дат: {dates[0]} — {dates[-1]}")
+
         url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
         headers = {"Authorization": API_KEY_ADV, "Content-Type": "application/json"}
-        rows = []
 
-        end = datetime.today()
-        dates = [(end - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(DAYS)][::-1]
         last_request_time = 0
+        all_rows = []
 
-        for article, adv_id in CAMPAIGN_MAP.items():
+        for article, adv_id in campaign_map.items():
             for i, date in enumerate(dates):
-                print(f"📅 [{article}] {i + 1}/{DAYS}: {date}")
+                log(f"📆 [{i+1}/{len(dates)}] {date} | Артикул: {article}")
                 payload = [{"id": adv_id, "dates": [date]}]
 
                 for attempt in range(3):
@@ -39,17 +44,17 @@ def parse_ads():
                     if resp.status_code == 200:
                         break
                     elif resp.status_code == 429:
-                        print(f"⏳ Попытка {attempt + 1}: лимит. Ждём 60 сек...")
+                        log(f"⏳ Лимит 429, попытка {attempt+1}, ждём 60 сек...")
                         time.sleep(60)
                     else:
-                        print(f"❌ Ошибка {resp.status_code}: {resp.text}")
+                        log(f"❌ Ошибка {resp.status_code}: {resp.text}")
                         break
 
                 if resp.status_code == 200:
                     raw = resp.json()
                     if isinstance(raw, list):
                         for stat in raw:
-                            rows.append({
+                            all_rows.append({
                                 "article": article,
                                 "date": date,
                                 "shows": stat.get("views", 0),
@@ -62,14 +67,25 @@ def parse_ads():
                                 "baskets": stat.get("atbs", 0)
                             })
 
-        df = pd.DataFrame(rows)
-        if not df.empty:
+        if all_rows:
+            df = pd.DataFrame(all_rows)
             df.to_sql("ads", conn, if_exists="append", index=False)
-            print(f"✅ Записано в ads: {len(df)} строк")
+            log(f"✅ Записано в ads: {len(df)} строк")
+
+            # Удаление дубликатов
+            cursor = conn.cursor()
+            cursor.execute('''
+                DELETE FROM ads WHERE rowid NOT IN (
+                    SELECT MAX(rowid) FROM ads
+                    GROUP BY article, date
+                )
+            ''')
+            log("🧹 Удалены дубликаты в таблице ads")
         else:
-            print("⚠️ Нет данных для записи")
-    except Exception as e:
-        print(f"❌ Ошибка парсера ads: {e}")
-    finally:
+            log("⚠️ Нет данных для записи")
+
         conn.commit()
         conn.close()
+
+    except Exception as e:
+        log(f"❌ Ошибка в ads_parser: {e}")

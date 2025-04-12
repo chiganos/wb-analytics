@@ -1,75 +1,36 @@
-from fastapi import FastAPI, HTTPException
-import os
-import sqlite3
-
-from app.parsers.funnel_parser import parse_funnel
-from app.parsers.ads_parser import parse_ads
-from app.parsers.positions_parser import parse_positions
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+from parsers.funnel_parser import parse_funnel
+from parsers.positions_parser import parse_positions
+from parsers.ads_parser import parse_ads
+from utils.logger import get_logs, clear_logs
 
 app = FastAPI()
 
-DB_PATH = "data/wb.db"
-
 @app.get("/")
 def root():
-    return {"message": "WB Analytics API is running"}
+    return {"msg": "WB Analytics API is working!"}
 
-@app.get("/articles")
-def read_articles():
-    if not os.path.exists(DB_PATH):
-        raise HTTPException(status_code=500, detail="❌ База данных не найдена!")
+@app.get("/run/funnel")
+def run_funnel():
+    parse_funnel()
+    return {"status": "🔄 Funnel parsing started"}
 
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT article, date, orders FROM funnel LIMIT 100")
-        rows = cursor.fetchall()
-        return [{"article": r[0], "date": r[1], "orders": r[2]} for r in rows]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Ошибка чтения БД: {e}")
-    finally:
-        conn.close()
+@app.get("/run/positions")
+def run_positions():
+    parse_positions()
+    return {"status": "🔄 Positions parsing started"}
 
+@app.get("/run/ads")
+def run_ads():
+    parse_ads()
+    return {"status": "🔄 Ads parsing started"}
 
-@app.post("/parse/funnel")
-def run_funnel_parser():
-    try:
-        parse_funnel()
-        return {"status": "✅ Funnel парсинг завершён"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Funnel parser error: {e}")
+@app.get("/logs", response_class=PlainTextResponse)
+def view_logs():
+    return get_logs()
 
-
-@app.post("/parse/ads")
-def run_ads_parser():
-    try:
-        parse_ads()
-        return {"status": "✅ Ads парсинг завершён"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Ads parser error: {e}")
-
-
-@app.post("/parse/positions")
-def run_positions_parser():
-    try:
-        parse_positions()
-        return {"status": "✅ Positions парсинг завершён"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Positions parser error: {e}")
-
-
-@app.get("/tables")
-def get_tables():
-    if not os.path.exists(DB_PATH):
-        raise HTTPException(status_code=500, detail="❌ База данных не найдена!")
-
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = cursor.fetchall()
-        return {"tables": [t[0] for t in tables]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"❌ Ошибка при получении таблиц: {e}")
-    finally:
-        conn.close()
+@app.get("/logs/clear")
+def clear_log_memory():
+    clear_logs()
+    return {"status": "🧹 Логи очищены"}
