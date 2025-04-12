@@ -34,3 +34,13 @@ def view_logs():
 def clear_log_memory():
     clear_logs()
     return {"status": "🧹 Логи очищены"}
+
+from fastapi.responses import FileResponse
+import os
+
+@app.get("/download-db")
+def download_db():
+    db_path = "data/wb.db"
+    if not os.path.exists(db_path):
+        raise HTTPException(status_code=404, detail="Файл базы данных не найден")
+    return FileResponse(path=db_path, filename="wb.db", media_type="application/octet-stream")
