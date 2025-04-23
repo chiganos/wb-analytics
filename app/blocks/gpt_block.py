@@ -1,15 +1,14 @@
-
-from openai import OpenAI
 import os
+from openai import OpenAI
+from fastapi import HTTPException
 from app.routes.init_context import context_by_article
 from datetime import datetime, timedelta
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DB_PATH = os.path.join(BASE_DIR, "data", "wb.db")
 
+# Используем клиента OpenAI с переменной окружения
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-if not openai.api_key:
-    raise HTTPException(status_code=500, detail="OpenAI API key not found in environment variables")
 
 def format_gpt_response(text: str) -> str:
     lines = text.strip().split("\n")
@@ -40,7 +39,6 @@ def analyze_article_with_gpt(article: int) -> str:
 
 Формат ответа:
 Покажи что происходит с продажами за последние 7 дней в динамике с прошлыми периодами, падают они, растут или плюс минус ровно. Сравни динамику с другими показателями и определи что больше всего влияет на изменение заказов. Используй цифры в качестве доказательства. Отвечай кратко и по делу в стиле сноба.
-
 """
 
     try:
