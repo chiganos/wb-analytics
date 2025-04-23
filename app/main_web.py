@@ -26,7 +26,7 @@ app.include_router(gpt_router.router)
 templates = Jinja2Templates(directory="templates")
 
 # ВАЖНО: сначала путь к базе
-DB_PATH = os.path.join(os.path.dirname(__file__), "data/wb.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "../data/wb.db")
 
 # Затем инициализация контекста
 init_context_data(DB_PATH)

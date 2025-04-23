@@ -38,7 +38,7 @@ def clear_log_memory():
 
 @app.get("/download-db")
 def download_db():
-    db_path = "data/wb.db"
+    db_path = "../data/wb.db"
     if not os.path.exists(db_path):
         raise HTTPException(status_code=404, detail="Файл базы данных не найден")
     return FileResponse(path=db_path, filename="wb.db", media_type="application/octet-stream")
