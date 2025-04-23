@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Анализ артикула {{ article }}</title>
+</head>
+<body style="font-family: sans-serif; max-width: 900px; margin: auto;">
+    <h2>📈 Анализ SMA</h2>
+    {{ block1|safe }}
+
+    <hr>
+    <h2>📊 Анализ рекламы: baskets → cart_add</h2>
+    {{ block2|safe }}
+
+    <hr>
+    <h2>📊 Влияние рекламы на заказы</h2>
+    {{ block3|safe }}
+
+    <hr>
+    <h2>📉 Влияние цены на заказы</h2>
+    {{ block4|safe }}
+
+    <hr>
+    <h2>🎯 Оптимизация цены</h2>
+    {{ block5|safe }}
+
+    <hr>
+    <h2>🔄 Конверсия корзины</h2>
+    {{ block6|safe }}
+
+    <hr>
+    <h2>📊 Показы рекламы → корзины</h2>
+    {{ block7|safe }}
+
+    <hr>
+    <h2>💰 CPM → показы</h2>
+    {{ block8|safe }}
+
+    <hr>
+    <h2>🔍 Анализ ключевых слов</h2>
+    {{ block9|safe }}
+
+    <hr>
+    <h2>🤖 GPT-анализ</h2>
+    {{ block10|safe }}
+</body>
+</html>

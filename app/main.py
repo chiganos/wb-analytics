@@ -1,46 +1,34 @@
-from fastapi import FastAPI
-from fastapi.responses import PlainTextResponse
-from parsers.funnel_parser import parse_funnel
-from parsers.positions_parser import parse_positions
-from parsers.ads_parser import parse_ads
-from utils.logger import get_logs, clear_logs
-
-app = FastAPI()
-
-@app.get("/")
-def root():
-    return {"msg": "WB Analytics API is working!"}
-
-@app.get("/run/funnel")
-def run_funnel():
-    parse_funnel()
-    return {"status": "🔄 Funnel parsing started"}
-
-@app.get("/run/positions")
-def run_positions():
-    parse_positions()
-    return {"status": "🔄 Positions parsing started"}
-
-@app.get("/run/ads")
-def run_ads():
-    parse_ads()
-    return {"status": "🔄 Ads parsing started"}
-
-@app.get("/logs", response_class=PlainTextResponse)
-def view_logs():
-    return get_logs()
-
-@app.get("/logs/clear")
-def clear_log_memory():
-    clear_logs()
-    return {"status": "🧹 Логи очищены"}
-
-from fastapi.responses import FileResponse
+# app/main.py
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+import sqlite3
+import pandas as pd
 import os
 
-@app.get("/download-db")
-def download_db():
-    db_path = "data/wb.db"
-    if not os.path.exists(db_path):
-        raise HTTPException(status_code=404, detail="Файл базы данных не найден")
-    return FileResponse(path=db_path, filename="wb.db", media_type="application/octet-stream")
+from app.blocks import sma_block  # Импортируем SMA-блок
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+DB_PATH = os.path.join(os.path.dirname(__file__), "../wb.db")
+
+
+def get_articles():
+    conn = sqlite3.connect(DB_PATH)
+    articles = pd.read_sql("SELECT DISTINCT article FROM funnel", conn)['article'].tolist()
+    conn.close()
+    return articles
+
+
+@app.get("/", response_class=HTMLResponse)
+def index(request: Request):
+    articles = get_articles()
+    return templates.TemplateResponse("index.html", {"request": request, "articles": articles})
+
+
+@app.get("/api/analytics/sma/{article}", response_class=HTMLResponse)
+def sma_analysis(article: int):
+    html = sma_block.analyze_sma(DB_PATH, article)
+    return HTMLResponse(content=html)
+

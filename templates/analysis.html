@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Анализ артикула</title>
+</head>
+<body>
+  <h2>📦 Артикул {{ article }}</h2>
+  <p style="white-space: pre-wrap;">{{ summary }}</p>
+
+  {% if plot_data %}
+    <img src="data:image/png;base64,{{ plot_data }}" width="800">
+  {% endif %}
+
+  <br><br>
+  <a href="/">← Назад</a>
+</body>
+</html>

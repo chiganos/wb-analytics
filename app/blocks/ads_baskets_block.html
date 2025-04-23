@@ -1,0 +1,5 @@
+<h3>📊 Анализ рекламы: baskets → cart_add</h3>
+<p>{{ summary|safe }}</p>
+{% if plot_base64 %}
+    <img src="data:image/png;base64,{{ plot_base64 }}" style="max-width: 100%;">
+{% endif %}

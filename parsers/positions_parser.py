@@ -1,97 +1,85 @@
 import requests
 import pandas as pd
 import sqlite3
-import time
 from datetime import datetime, timedelta
+import time
 from utils.logger import log
 
 # === Настройки ===
 API_KEY = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwMjE3djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc1OTI1NjAyOSwiaWQiOiIwMTk1ZWZmYy0xMzkxLTc5MzgtODMzNS05MmU0OTZiMDJmMTIiLCJpaWQiOjQ2MTg0MjIyLCJvaWQiOjEyNTE1MiwicyI6MTA3Mzc0MTg2MCwic2lkIjoiZDUxNzJkMzgtY2NmNC00Njc1LTk3NzUtZTNjYWFlMzU4MTNkIiwidCI6ZmFsc2UsInVpZCI6NDYxODQyMjJ9.0gxVjd5KTc9lF2L53e1aU-kP5qstB1cta_3y3J4wk6330nJJDZhwufMTbxuYEVPDz9y4DT51wZ8E8hBNRnwQ-A"
-nm_ids = [241673716, 241671651, 341660641, 253899763, 253901303, 253904160, 253930727, 253932533, 253951797, 253935924, 253944734, 253954121, 282933985, 282930197, 287175828, 287405946, 287394586, 282925140, 287387639, 287410201, 287210296, 287189018, 287938384, 287272632, 287935736, 287815696, 287826830, 287282170, 287237715, 287250048, 287923303, 287411459, 301510803, 301521900, 301532388, 301517629, 301500581, 301529171, 301498019, 301491992, 301487789, 301567788, 287943389, 221455925, 321876497, 370471780, 370480035, 370489588, 370491526, 371681456, 371664076, 371706064, 371711825, 371713737, 221268061, 221462995, 220093122]  # ← список артикулов
-DB_PATH = "data/wb.db"
+ARTICLES_CSV = "articles.csv"
+DAYS_TO_PARSE = 45
 
+# Загружаем список артикулов из CSV
+articles_df = pd.read_csv(ARTICLES_CSV)
+nm_ids = articles_df["article"].dropna().astype(int).tolist()
+
+# === Функция получения уже сохранённых дат ===
+def get_existing_dates(article_id, conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT date FROM positions WHERE article = ?", (article_id,))
+    return set(row[0] for row in cursor.fetchall())
+
+# === Основной код парсинга ===
 def parse_positions():
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=30)
-        cursor = conn.cursor()
+    conn = sqlite3.connect("data/wb.db")
+    today = datetime.today().date()
 
-        today = datetime.today()
-        dates = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(30)]
-        dates.reverse()
-        log(f"📅 Диапазон дат: {dates[0]} — {dates[-1]}")
+    for nm_id in nm_ids:
+        log(f"\n▶ Парсим артикул {nm_id}")
+        existing_dates = get_existing_dates(nm_id, conn)
 
-        # Добавим колонку open_card, если нет
-        try:
-            cursor.execute("ALTER TABLE positions ADD COLUMN open_card INTEGER")
-            log("➕ Добавлена колонка open_card")
-        except sqlite3.OperationalError:
-            pass
+        for delta in range(DAYS_TO_PARSE):
+            target_date = (today - timedelta(days=delta)).isoformat()
+            if target_date in existing_dates:
+                log(f"Пропускаем {target_date} — уже в базе")
+                continue
 
-        url = "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts"
-        headers = {"Authorization": API_KEY, "Content-Type": "application/json"}
+            url = f"https://statistics-api.wildberries.ru/api/v1/supplier/search"  # пример URL
+            headers = {"Authorization": API_KEY}
+            params = {
+                "dateFrom": target_date,
+                "dateTo": target_date,
+                "nm": nm_id
+            }
 
-        for date in dates:
-            for nm_id in nm_ids:
-                log(f"📦 Positions {date} | 🔍 nm_id: {nm_id}")
-                payload = {
-                    "currentPeriod": {"start": date, "end": date},
-                    "nmIds": [nm_id],
-                    "topOrderBy": "openCard",
-                    "orderBy": {"field": "avgPosition", "mode": "asc"},
-                    "limit": 30
-                }
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code != 200:
+                log(f"Ошибка {response.status_code} при запросе за {target_date}")
+                time.sleep(2)
+                continue
 
-                for attempt in range(3):
-                    try:
-                        resp = requests.post(url, headers=headers, json=payload)
-                        if resp.status_code == 200:
-                            break
-                        elif resp.status_code == 429:
-                            log(f"⏳ 429-лимит, попытка {attempt+1}, ждём 60 сек...")
-                            time.sleep(60)
-                        else:
-                            log(f"❌ Positions {date} — ошибка {resp.status_code}: {resp.text}")
-                            break
-                    except Exception as e:
-                        log(f"⚠️ Positions {date} — сбой соединения: {e}")
-                        break
+            data = response.json()
+            if not data:
+                log(f"Нет данных за {target_date}")
+                continue
 
-                if resp.status_code == 200:
-                    items = resp.json().get("data", {}).get("items", [])
-                    rows = []
-                    for item in items:
-                        rows.append({
-                            "article": item.get("nmId"),
-                            "search_query": item.get("text"),
-                            "avg_position": item.get("avgPosition", {}).get("current"),
-                            "visibility": item.get("visibility", {}).get("current"),
-                            "orders": item.get("orders", {}).get("current"),
-                            "open_card": item.get("openCard", {}).get("current"),
-                            "basket_conversion": item.get("openToCart", {}).get("current"),
-                            "order_conversion": item.get("cartToOrder", {}).get("current"),
-                            "date": date
-                        })
+            # Сохраняем в базу
+            for record in data:
+                conn.execute(
+                    """
+                    INSERT INTO positions (article, search_query, avg_position, visibility, orders, 
+                        basket_conversion, order_conversion, date, open_card)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        nm_id,
+                        record.get("searchQuery"),
+                        record.get("avgPosition"),
+                        record.get("visibility"),
+                        record.get("orders"),
+                        record.get("basketConversion"),
+                        record.get("orderConversion"),
+                        target_date,
+                        record.get("openCard"),
+                    )
+                )
+            conn.commit()
+            log(f"Сохранено за {target_date}: {len(data)} записей")
+            time.sleep(1.5)
 
-                    if rows:
-                        df = pd.DataFrame(rows)
-                        df.to_sql("positions", conn, if_exists="append", index=False)
-                        log(f"✅ Записано {len(df)} строк за {date}, nm_id={nm_id}")
-                        conn.commit()
-                    else:
-                        log(f"⚠️ Пустой ответ для nm_id={nm_id}, дата {date}")
+    conn.close()
+    log("\n✅ Парсинг завершён")
 
-                time.sleep(21)
-
-        # Удалим дубликаты
-        cursor.execute('''
-            DELETE FROM positions WHERE rowid NOT IN (
-                SELECT MAX(rowid) FROM positions GROUP BY article, date, search_query
-            )
-        ''')
-        conn.commit()
-        log("🧹 Удалены дубликаты в таблице positions")
-
-        conn.close()
-
-    except Exception as e:
-        log(f"❌ Ошибка в positions_parser: {e}")
+if __name__ == "__main__":
+    parse_positions()
