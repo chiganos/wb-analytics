@@ -19,7 +19,7 @@ import os
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
-DB_PATH = os.path.join(os.path.dirname(__file__), "../../wb.db")
+DB_PATH = os.path.join(os.path.dirname(__file__), "../../data/wb.db")
 
 @router.get("/analyze/{article}", response_class=HTMLResponse)
 def combined_analysis(request: Request, article: int):
