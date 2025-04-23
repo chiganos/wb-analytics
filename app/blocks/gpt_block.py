@@ -4,7 +4,12 @@ import os
 from app.routes.init_context import context_by_article
 from datetime import datetime, timedelta
 
-client = OpenAI(api_key="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")  # ← замени на свой актуальный ключ
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DB_PATH = os.path.join(BASE_DIR, "data", "wb.db")
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+if not openai.api_key:
+    raise HTTPException(status_code=500, detail="OpenAI API key not found in environment variables")
 
 def format_gpt_response(text: str) -> str:
     lines = text.strip().split("\n")
