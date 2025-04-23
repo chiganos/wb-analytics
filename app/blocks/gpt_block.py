@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DB_PATH = os.path.join(BASE_DIR, "data", "wb.db")
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 if not openai.api_key:
     raise HTTPException(status_code=500, detail="OpenAI API key not found in environment variables")
 
