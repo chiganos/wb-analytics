@@ -1,43 +1,73 @@
 <!DOCTYPE html>
 <html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>AI-консультант Wildberries</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
+ <head>
+  <meta charset="utf-8"/>
+  <title>
+   AI-консультант Wildberries
+  </title>
+  <style>
+   body { font-family: Arial, sans-serif; margin: 30px; }
         h1 { color: #5b21b6; }
         select, button { padding: 8px; font-size: 16px; margin-top: 10px; }
         #results { margin-top: 30px; }
         .block { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
-    </style>
-</head>
-<body>
-    <h1>📊 Wildberries Аналитика</h1>
-
-    <label for="article-select">Выберите артикул:</label><br>
-    <select id="article-select">
-        {% for art in articles %}
-            <option value="{{ art }}">{{ art }}</option>
-        {% endfor %}
-    </select>
-    <button onclick="loadAnalytics()">Показать аналитику</button>
-
-    <div id="results">
-        <div class="block" id="sma-block">🔄 Загрузка скользящего среднего...</div>
-        <div class="block" id="ads-baskets-block">🔄 Загрузка влияния рекламы на корзину...</div>
-        <div class="block" id="ads-orders-block">🔄 Загрузка влияния рекламы на заказы...</div>
-        <div class="block" id="price-orders-block">🔄 Загрузка влияния цены на заказы...</div>
-        <div class="block" id="price-optimization-block">🔄 Загрузка оптимизации цены...</div>
-        <div class="block" id="conversion-block">🔄 Загрузка конверсии корзины...</div>
-        <div class="block" id="keywords-block">🔄 Загрузка анализа ключевых слов...</div>
-        <div class="block" id="ads-shows-baskets-block">🔄 Загрузка влияния показов на корзины...</div>
-        <div class="block" id="cpm-shows-block">🔄 Загрузка влияния CPM на показы...</div>
-        <div class="block" id="gpt-block">🔄 Загрузка GPT-анализа...</div>
-    </div>
-
-    <script>
-        function loadAnalytics() {
-            const art = document.getElementById("article-select").value;
+  </style>
+ </head>
+ <body>
+  <h1>
+   📊 Wildberries Аналитика
+  </h1>
+  <label for="article-select">
+   Выберите артикул:
+  </label>
+  <br/>
+  <select id="article-select">
+   {% for art in articles %}
+   <option value="{{ art }}">
+    {{ art }}
+   </option>
+   {% endfor %}
+  </select>
+  <input id="article-input" placeholder="или введите артикул вручную" style="margin-left:10px;" type="text"/>
+  <button onclick="loadAnalytics()">
+   Показать аналитику
+  </button>
+  <div id="results">
+   <div class="block" id="sma-block">
+    🔄 Загрузка скользящего среднего...
+   </div>
+   <div class="block" id="ads-baskets-block">
+    🔄 Загрузка влияния рекламы на корзину...
+   </div>
+   <div class="block" id="ads-orders-block">
+    🔄 Загрузка влияния рекламы на заказы...
+   </div>
+   <div class="block" id="price-orders-block">
+    🔄 Загрузка влияния цены на заказы...
+   </div>
+   <div class="block" id="price-optimization-block">
+    🔄 Загрузка оптимизации цены...
+   </div>
+   <div class="block" id="conversion-block">
+    🔄 Загрузка конверсии корзины...
+   </div>
+   <div class="block" id="keywords-block">
+    🔄 Загрузка анализа ключевых слов...
+   </div>
+   <div class="block" id="ads-shows-baskets-block">
+    🔄 Загрузка влияния показов на корзины...
+   </div>
+   <div class="block" id="cpm-shows-block">
+    🔄 Загрузка влияния CPM на показы...
+   </div>
+   <div class="block" id="gpt-block">
+    🔄 Загрузка GPT-анализа...
+   </div>
+  </div>
+  <script>
+   function loadAnalytics() {
+            const manualInput = document.getElementById("article-input").value.trim();
+        const art = manualInput !== "" ? manualInput : document.getElementById("article-select").value;
             const blocks = {
                 "sma-block": "/api/analytics/sma/",
                 "ads-baskets-block": "/api/analytics/ads-baskets/",
@@ -70,6 +100,6 @@
                     });
             }
         }
-    </script>
-</body>
+  </script>
+ </body>
 </html>
