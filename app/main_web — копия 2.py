@@ -1,4 +1,3 @@
-print("🚀 main_web.py ЗАПУСТИЛСЯ")
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -16,7 +15,6 @@ from app.blocks import (
     ads_shows_to_baskets_block,
     cpm_to_shows_block,
     keyword_analysis_block,
-    price_metric_block,
 )
 from app.routes import gpt_router, combined
 from app.routes.init_context import init_context_data  # импорт функции
@@ -88,10 +86,3 @@ def cpm_to_shows_analysis(article: int):
 def keyword_analysis(article: int):
     html = keyword_analysis_block.analyze_keywords(DB_PATH, article)
     return HTMLResponse(content=html)
-    
-@app.get("/api/analytics/price-metric/{article}", response_class=HTMLResponse)
-def price_metric_analysis(article: int):
-    html = price_metric_block.render_price_metric_block(article, DB_PATH)
-    return HTMLResponse(content=html)
-
-

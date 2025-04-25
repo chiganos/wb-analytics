@@ -11,6 +11,7 @@ from app.blocks import (
     ads_shows_to_baskets_block,
     cpm_to_shows_block,
     keyword_analysis_block,
+    price_metric_block
 )
 from app.blocks import gpt_block
 from app.routes import init_context
@@ -35,6 +36,7 @@ def combined_analysis(request: Request, article: int):
     html8, ctx8 = cpm_to_shows_block.analyze_cpm_to_shows(DB_PATH, article)
     html9, ctx9 = keyword_analysis_block.analyze_keywords(DB_PATH, article)
     html10, ctx10 = gpt_block.analyze_with_gpt(DB_PATH, article)
+    html11, ctx11 = price_metric_block.analyze_price_metric(DB_PATH, article)
 
     # Собираем контекст
     context_text = "\n".join([ctx for ctx in [ctx1, ctx2, ctx3, ctx4, ctx5, ctx6, ctx7, ctx8, ctx9] if ctx])
@@ -55,4 +57,5 @@ def combined_analysis(request: Request, article: int):
         "block8": html8,
         "block9": html9,
         "block10": html10,
+        "block11": html11,
     })

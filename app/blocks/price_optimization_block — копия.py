@@ -10,8 +10,6 @@ import io
 import base64
 
 def get_optimal_price(df, y_col):
-    if df["price"].nunique() <= 1:
-        return f"<div style='font-family: sans-serif; font-size: 15px; color: #555;'>Недостаточно данных: только {df['price'].nunique()} уникальная цена для построения графика.</div>"
     df = df[['price', y_col]].dropna()
     df = df.groupby('price')[y_col].mean().reset_index()
     if len(df) < 3:
@@ -49,16 +47,7 @@ def analyze_price_optimization(db_path: str, article: int) -> str:
     if len(df_f) < 3:
         return "<p>❗ Недостаточно данных по funnel для анализа.</p>"
 
-    result = get_optimal_price(df_f, 'orders')
-    if isinstance(result, str):
-        return result
-    if len(result) == 4:
-        df_orders, y_orders, price_orders, _ = result
-    elif len(result) == 3:
-        df_orders, y_orders, price_orders = result
-    else:
-        return "<div style='font-family:sans-serif; font-size:15px; color:#b00;'>Ошибка: неожиданный формат данных при оптимизации цены.</div>"
-    
+    df_orders, y_orders, price_orders = get_optimal_price(df_f, 'orders')
     df_profit, y_profit, price_profit = get_optimal_price(df_c, 'profit') if df_c is not None and 'profit' in df_c else (None, None, None)
 
     fig, axs = plt.subplots(1, 2, figsize=(14, 5))

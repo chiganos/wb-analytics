@@ -48,6 +48,9 @@
    <div class="block" id="price-optimization-block">
     🔄 Загрузка оптимизации цены...
    </div>
+      <div class="block" id="price-metric-block">
+    🔄 Загрузка метрики...
+   </div>
    <div class="block" id="conversion-block">
     🔄 Загрузка конверсии корзины...
    </div>
@@ -78,7 +81,8 @@
                 "keywords-block": "/api/analytics/keywords/",
                 "ads-shows-baskets-block": "/api/analytics/ads-shows-baskets/",
                 "cpm-shows-block": "/api/analytics/cpm-shows/",
-                "gpt-block": "/api/analytics/gpt/"
+                "gpt-block": "/api/analytics/gpt/",
+                "price-metric-block": "/api/analytics/price-metric/"
             };
 
             for (const [blockId, endpoint] of Object.entries(blocks)) {
