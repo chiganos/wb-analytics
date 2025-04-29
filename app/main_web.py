@@ -44,54 +44,53 @@ def index(request: Request):
     articles = get_articles()
     return templates.TemplateResponse("index.html", {"request": request, "articles": articles})
 
-@app.get("/api/analytics/sma/{article}", response_class=HTMLResponse)
-def sma_analysis(article: int):
-    html = sma_block.analyze_sma(DB_PATH, article)
-    return HTMLResponse(content=html)
+@app.get("/api/analytics/sma/{article}")
+def sma_analysis(article: str):
+    return sma_block.analyze_sma(DB_PATH, article)  # уже возвращает HTMLResponse
 
 @app.get("/api/analytics/ads-baskets/{article}", response_class=HTMLResponse)
 def ads_baskets_analysis(article: int):
     html = ads_baskets_block.analyze_ads_baskets(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/ads-orders/{article}", response_class=HTMLResponse)
 def ads_orders_analysis(article: int):
     html = ads_impact_block.analyze_ads_impact(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/price-orders/{article}", response_class=HTMLResponse)
 def price_orders_analysis(article: int):
     html = price_orders_block.analyze_price_impact(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/price-optimization/{article}", response_class=HTMLResponse)
 def price_optimization_analysis(article: int):
     html = price_optimization_block.analyze_price_optimization(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/price-conversion/{article}", response_class=HTMLResponse)
 def price_conversion_analysis(article: int):
     html = price_conversion_block.analyze_price_conversion(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/ads-shows-baskets/{article}", response_class=HTMLResponse)
 def ads_shows_baskets_analysis(article: int):
     html = ads_shows_to_baskets_block.analyze_ads_shows_to_baskets(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/cpm-shows/{article}", response_class=HTMLResponse)
 def cpm_to_shows_analysis(article: int):
     html = cpm_to_shows_block.analyze_cpm_to_shows(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
 
 @app.get("/api/analytics/keywords/{article}", response_class=HTMLResponse)
 def keyword_analysis(article: int):
     html = keyword_analysis_block.analyze_keywords(DB_PATH, article)
-    return HTMLResponse(content=html)
+    return html
     
 @app.get("/api/analytics/price-metric/{article}", response_class=HTMLResponse)
 def price_metric_analysis(article: int):
     html = price_metric_block.render_price_metric_block(article, DB_PATH)
-    return HTMLResponse(content=html)
+    return html
 
 

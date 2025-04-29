@@ -1,109 +1,90 @@
 <!DOCTYPE html>
 <html lang="ru">
- <head>
-  <meta charset="utf-8"/>
-  <title>
-   AI-консультант Wildberries
-  </title>
+<head>
+  <meta charset="UTF-8">
+  <title>Аналитика WB</title>
   <style>
-   body { font-family: Arial, sans-serif; margin: 30px; }
-        h1 { color: #5b21b6; }
-        select, button { padding: 8px; font-size: 16px; margin-top: 10px; }
-        #results { margin-top: 30px; }
-        .block { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    h1 { color: #5b21b6; }
+    select, button { padding: 8px; font-size: 16px; margin-top: 10px; }
+    #results { margin-top: 30px; }
+    .block { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
   </style>
- </head>
- <body>
-  <h1>
-   📊 AI WB
-  </h1>
-  <label for="article-select">
-   Выберите артикул:
-  </label>
-  <br/>
-  <select id="article-select">
-   {% for art in articles %}
-   <option value="{{ art }}">
-    {{ art }}
-   </option>
-   {% endfor %}
-  </select>
-  <input id="article-input" placeholder="или введите артикул вручную" style="margin-left:10px;" type="text"/>
-  <button onclick="loadAnalytics()">
-   Показать аналитику
-  </button>
-  <div id="results">
-   <div class="block" id="sma-block">
-    🔄 Загрузка скользящего среднего...
-   </div>
-   <div class="block" id="ads-baskets-block">
-    🔄 Загрузка влияния рекламы на корзину...
-   </div>
-   <div class="block" id="ads-orders-block">
-    🔄 Загрузка влияния рекламы на заказы...
-   </div>
-   <div class="block" id="price-orders-block">
-    🔄 Загрузка влияния цены на заказы...
-   </div>
-   <div class="block" id="price-optimization-block">
-    🔄 Загрузка оптимизации цены...
-   </div>
-      <div class="block" id="price-metric-block">
-    🔄 Загрузка метрики...
-   </div>
-   <div class="block" id="conversion-block">
-    🔄 Загрузка конверсии корзины...
-   </div>
-   <div class="block" id="keywords-block">
-    🔄 Загрузка анализа ключевых слов...
-   </div>
-   <div class="block" id="ads-shows-baskets-block">
-    🔄 Загрузка влияния показов на корзины...
-   </div>
-   <div class="block" id="cpm-shows-block">
-    🔄 Загрузка влияния CPM на показы...
-   </div>
-   <div class="block" id="gpt-block">
-    🔄 Загрузка GPT-анализа...
-   </div>
-  </div>
-  <script>
-   function loadAnalytics() {
-            const manualInput = document.getElementById("article-input").value.trim();
-        const art = manualInput !== "" ? manualInput : document.getElementById("article-select").value;
-            const blocks = {
-                "sma-block": "/api/analytics/sma/",
-                "ads-baskets-block": "/api/analytics/ads-baskets/",
-                "ads-orders-block": "/api/analytics/ads-orders/",
-                "price-orders-block": "/api/analytics/price-orders/",
-                "price-optimization-block": "/api/analytics/price-optimization/",
-                "conversion-block": "/api/analytics/price-conversion/",
-                "keywords-block": "/api/analytics/keywords/",
-                "ads-shows-baskets-block": "/api/analytics/ads-shows-baskets/",
-                "cpm-shows-block": "/api/analytics/cpm-shows/",
-                "gpt-block": "/api/analytics/gpt/",
-                "price-metric-block": "/api/analytics/price-metric/"
-            };
+</head>
+<body>
 
-            for (const [blockId, endpoint] of Object.entries(blocks)) {
-                const el = document.getElementById(blockId);
-                if (!el) {
-                    console.warn("❌ Блок не найден:", blockId);
-                    continue;
-                }
+<h1>📊 AI WB</h1>
 
-                el.innerText = "🔄 Загрузка...";
-                fetch(endpoint + art)
-                    .then(resp => resp.text())
-                    .then(data => {
-                        el.innerHTML = data;
-                    })
-                    .catch(err => {
-                        el.innerText = "⚠️ Ошибка загрузки";
-                        console.error(err);
-                    });
-            }
-        }
-  </script>
- </body>
+<label for="article-select">Выберите артикул:</label><br/>
+<select id="article-select">
+  {% for art in articles %}
+  <option value="{{ art }}">{{ art }}</option>
+  {% endfor %}
+</select>
+<input id="article-input" placeholder="или введите артикул вручную" style="margin-left:10px;" type="text"/>
+<button onclick="loadAnalytics()">Показать аналитику</button>
+
+<div id="results">
+  <div class="block" id="sma-block">🔄 Загрузка скользящего среднего...</div>
+  <div class="block" id="ads-baskets-block">🔄 Загрузка влияния рекламы на корзину...</div>
+  <div class="block" id="ads-orders-block">🔄 Загрузка влияния рекламы на заказы...</div>
+  <div class="block" id="price-orders-block">🔄 Загрузка влияния цены на заказы...</div>
+  <div class="block" id="price-optimization-block">🔄 Загрузка оптимизации цены...</div>
+  <div class="block" id="price-metric-block">🔄 Загрузка метрики...</div>
+  <div class="block" id="conversion-block">🔄 Загрузка конверсии корзины...</div>
+  <div class="block" id="keywords-block">🔄 Загрузка анализа ключевых слов...</div>
+  <div class="block" id="ads-shows-baskets-block">🔄 Загрузка влияния показов на корзины...</div>
+  <div class="block" id="cpm-shows-block">🔄 Загрузка влияния CPM на показы...</div>
+  <div class="block" id="gpt-block">🔄 Загрузка GPT-анализа...</div>
+</div>
+
+<script>
+function loadAnalytics() {
+  const manualInput = document.getElementById("article-input").value.trim();
+  const art = manualInput !== "" ? manualInput : document.getElementById("article-select").value;
+
+  const blocks = {
+    "sma-block": "/api/analytics/sma/",
+    "ads-baskets-block": "/api/analytics/ads-baskets/",
+    "ads-orders-block": "/api/analytics/ads-orders/",
+    "price-orders-block": "/api/analytics/price-orders/",
+    "price-optimization-block": "/api/analytics/price-optimization/",
+    "price-metric-block": "/api/analytics/price-metric/",
+    "conversion-block": "/api/analytics/price-conversion/",
+    "keywords-block": "/api/analytics/keywords/",
+    "ads-shows-baskets-block": "/api/analytics/ads-shows-baskets/",
+    "cpm-shows-block": "/api/analytics/cpm-shows/",
+    "gpt-block": "/api/analytics/gpt/"
+  };
+
+  for (const [blockId, endpoint] of Object.entries(blocks)) {
+    const el = document.getElementById(blockId);
+    if (!el) continue;
+
+    el.innerText = "🔄 Загрузка...";
+    fetch(endpoint + art)
+      .then(resp => resp.text())
+      .then(data => {
+        el.innerHTML = data;
+
+        // Выполняем скрипты после вставки
+        el.querySelectorAll("script").forEach(oldScript => {
+          const newScript = document.createElement("script");
+          if (oldScript.src) {
+            newScript.src = oldScript.src;
+          } else {
+            newScript.textContent = oldScript.textContent;
+          }
+          oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+      })
+      .catch(err => {
+        el.innerText = "⚠️ Ошибка загрузки";
+        console.error(err);
+      });
+  }
+}
+</script>
+
+</body>
 </html>

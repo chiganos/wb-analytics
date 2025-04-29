@@ -1,73 +1,58 @@
-
 import pandas as pd
 import sqlite3
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import io
-import base64
-from datetime import timedelta
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
 
 def analyze_sma(db_path, article):
-    conn = sqlite3.connect(db_path)
-    df = pd.read_sql(f"SELECT * FROM funnel WHERE article = {article}", conn, parse_dates=['date'])
-    conn.close()
+    try:
+        conn = sqlite3.connect(db_path)
+        query = f"SELECT date, orders FROM funnel WHERE article = '{article}'"
+        df = pd.read_sql(query, conn)
+        conn.close()
 
-    if df.empty:
-        return "<p>⚠️ Нет данных по данному артикулу.</p>"
+        if df.empty:
+            return HTMLResponse("<h2>Нет данных для отображения</h2>", status_code=200)
 
-    df = df.sort_values("date").copy()
-    df["SMA_3"] = df["orders"].rolling(window=3).mean()
-    df["SMA_7"] = df["orders"].rolling(window=7).mean()
+        df['date'] = pd.to_datetime(df['date'])
+        df = df.sort_values('date')
 
-    # Цветные зоны: рост (оранжевый > синий), спад (оранжевый < синий)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df["date"], df["orders"], marker="o", label="Заказы", color="black")
-    ax.plot(df["date"], df["SMA_3"], label="SMA 3 дня", color="orange")
-    ax.plot(df["date"], df["SMA_7"], label="SMA 7 дней", color="blue")
+        # Скользящая средняя
+        df['sma'] = df['orders'].rolling(window=7, min_periods=1).mean()
 
-    for i in range(1, len(df)):
-        prev = df.iloc[i - 1]
-        curr = df.iloc[i]
-        if pd.notna(curr["SMA_3"]) and pd.notna(curr["SMA_7"]):
-            color = "#d1f7c4" if curr["SMA_3"] > curr["SMA_7"] else "#ffd6d6"
-            ax.axvspan(prev["date"], curr["date"], color=color, alpha=0.3)
+        # Расчёт прироста за последние 7 дней vs предыдущие 7
+        last_7 = df[df["date"] >= df["date"].max() - pd.Timedelta(days=6)]["orders"].sum()
+        prev_7 = df[(df["date"] < df["date"].max() - pd.Timedelta(days=6)) & (df["date"] >= df["date"].max() - pd.Timedelta(days=13))]["orders"].sum()
 
-    ax.set_title("Скользящее среднее заказов + зоны роста/спада")
-    ax.set_xlabel("Дата")
-    ax.set_ylabel("Количество заказов")
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
+        if pd.isna(prev_7) or prev_7 == 0:
+            growth = float("inf")
+        else:
+            growth = (last_7 - prev_7) / prev_7 * 100
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    img_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        growth_str = f"{growth:.1f}%" if growth != float("inf") else "∞"
 
-    # Сравнение с предыдущей неделей
-    last_date = df["date"].max()
-    this_week = df[df["date"] > last_date - timedelta(days=7)]["orders"].sum()
-    prev_week = df[(df["date"] > last_date - timedelta(days=14)) & (df["date"] <= last_date - timedelta(days=7))]["orders"].sum()
+        summary_html = f"""
+        <h3>📅 Сравнение заказов</h3>
+        <ul>
+          <li>За последние 7 дней: <b>{last_7}</b> заказов</li>
+          <li>Неделей ранее: <b>{prev_7}</b> заказов</li>
+          <li>📊 Прирост: <b>{growth_str}</b></li>
+        </ul>
+        """
 
-    if prev_week > 0:
-        growth = round((this_week - prev_week) / prev_week * 100, 1)
-        sign = "+" if growth >= 0 else "−"
-        growth_text = f"{sign}{abs(growth)}%"
-    else:
-        growth_text = "недостаточно данных"
+        # Построение графика через Plotly
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df['date'], y=df['orders'], mode='lines+markers', name='Продажи'))
+        fig.add_trace(go.Scatter(x=df['date'], y=df['sma'], mode='lines', name='7-дневное скользящее среднее'))
 
-    html = f"""
-    <h3>📈 Скользящее среднее</h3>
-    <p>🟩 Зелёная зона — рост (SMA_3 > SMA_7)<br>
-       🟥 Красная зона — падение (SMA_3 < SMA_7)</p>
-    <img src="data:image/png;base64,{img_base64}" style="max-width:100%; margin-bottom:20px;">
-    <h4>📆 Сравнение заказов</h4>
-    <ul>
-        <li>За последние 7 дней: <b>{this_week}</b> заказов</li>
-        <li>Неделей ранее: <b>{prev_week}</b> заказов</li>
-        <li>📊 Прирост: <b>{growth_text}</b></li>
-    </ul>
-    """
+        fig.update_layout(
+            title=f"SMA по артикулу {article}",
+            xaxis_title="Дата",
+            yaxis_title="Продажи",
+            hovermode="x unified"
+        )
 
-    return html
+        html = summary_html + fig.to_html(full_html=False, include_plotlyjs='cdn')
+        return HTMLResponse(content=html)
+
+    except Exception as e:
+        return HTMLResponse(content=f"<h2>Ошибка: {str(e)}</h2>", status_code=500)

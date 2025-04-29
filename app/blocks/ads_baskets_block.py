@@ -1,76 +1,60 @@
-
 import sqlite3
 import pandas as pd
-import matplotlib.pyplot as plt
-import io
-import base64
-from sklearn.linear_model import LinearRegression
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
+import numpy as np
 
-def analyze_ads_baskets(db_path: str, article: int) -> str:
-    article = int(article)
-
+def analyze_ads_baskets(db_path: str, article: str):
     conn = sqlite3.connect(db_path)
-    ads = pd.read_sql_query("SELECT * FROM ads", conn)
-    funnel = pd.read_sql_query("SELECT * FROM funnel", conn)
+    ads = pd.read_sql("SELECT * FROM ads WHERE article = ?", conn, params=(article,))
+    funnel = pd.read_sql("SELECT * FROM funnel WHERE article = ?", conn, params=(article,))
     conn.close()
 
-    ads['date'] = pd.to_datetime(ads['date'])
-    funnel['date'] = pd.to_datetime(funnel['date'])
+    ads["date"] = pd.to_datetime(ads["date"])
+    funnel["date"] = pd.to_datetime(funnel["date"])
 
-    df_ads = ads[ads['article'].astype(str) == str(article)]
-    df_funnel = funnel[funnel['article'].astype(str) == str(article)]
-    df = df_ads.merge(df_funnel, on=['article', 'date'], how='inner')
+    merged = pd.merge(ads, funnel, on=["article", "date"], how="inner")
+    merged_sorted = merged.sort_values("date")
 
-    if df.empty:
-        return "<p>❗ Нет данных после объединения по article и date.</p>"
+    # Статистика по фильтрации
+    filtered = merged_sorted[(merged_sorted["shows"] > 200) & (merged_sorted["baskets"] > 0)]
+    n_days = len(filtered)
 
-    df['shows'] = pd.to_numeric(df['shows'], errors='coerce')
-    df = df[df['shows'] > 200]
+    # Корреляция baskets → cart_add
+    correlation = np.corrcoef(filtered["baskets"], filtered["cart_add"])[0, 1] if n_days > 1 else 0
+    correlation = round(correlation, 2)
 
-    if 'shows' not in df or 'baskets' not in df or 'cart_add' not in df:
-        return "<p>❗ Не найдены нужные колонки.</p>"
-
-    if len(df) < 3:
-        return f"<p>❗ Недостаточно данных (дней с показами > 200): {len(df)}</p>"
-
-    corr = df['baskets'].corr(df['cart_add'])
-
-    X = df[['baskets']].values
-    y = df['cart_add'].values
-    model = LinearRegression().fit(X, y)
-    line = model.predict(X)
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(df['baskets'], df['cart_add'], alpha=0.6, label='Данные')
-    ax.plot(df['baskets'], line, color='red', label='Линейная регрессия')
-    ax.set_title(f'Корреляция baskets → cart_add\nАртикул {article}, r = {corr:.2f}')
-    ax.set_xlabel("Добавления в корзину по рекламе (baskets)")
-    ax.set_ylabel("Общие добавления в корзину (cart_add)")
-    ax.legend()
-    ax.grid(True)
-    fig.tight_layout()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
-    img_tag = f'<img src="data:image/png;base64,{img_data}" style="max-width:100%;">'
-
-    if corr > 0.6:
-        msg = "✅ Сильная положительная связь — реклама сильно влияет на добавления"
-    elif corr > 0.3:
-        msg = "➕ Умеренная связь — реклама влияет, но не решающий фактор"
-    elif corr > 0:
-        msg = "⚠️ Слабая связь — влияние есть, но слабое"
+    # Интерпретация
+    if correlation > 0.6:
+        interp = "✅ <b>Сильная положительная связь</b> — реклама сильно влияет на добавления в корзину"
+    elif correlation > 0.3:
+        interp = "ℹ️ Умеренная положительная связь"
+    elif correlation > 0:
+        interp = "⚠️ Слабая положительная связь"
     else:
-        msg = "❌ Нет связи или она отрицательная"
+        interp = "❌ Связь не обнаружена"
 
-    html_output = (
-        f"<h3>📊 Анализ рекламы: зависимость общих добавлений в корзину от добавления в корзину по рекламе → cart_add</h3>"
-        f"<p><b>📈 Корреляция:</b> {corr:.2f}</p>"
-        f"<p>{msg}</p>"
-        f"<p>Дней с показами &gt; 200: {len(df)}</p>"
-        f"{img_tag}"
+    # Plotly график baskets vs cart_add по дате
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=merged_sorted['date'], y=merged_sorted['baskets'],
+                             mode='lines+markers', name='По рекламе',
+                             line=dict(color='orange')))
+    fig.add_trace(go.Scatter(x=merged_sorted['date'], y=merged_sorted['cart_add'],
+                             mode='lines+markers', name='Общие добавления',
+                             line=dict(color='red')))
+
+    fig.update_layout(
+        title=f"Влияние рекламы на общие добавления в корзину / артикул {article}",
+        xaxis_title="Дата",
+        yaxis_title="Количество",
+        hovermode="x unified"
     )
 
-    return html_output
+    html_summary = f"""
+    <p>📉 <b>Корреляция</b>: {correlation}</p>
+    <p>{interp}</p>
+    <p>Дней с показами > 200: {n_days}</p>
+    """
+
+    full_html = html_summary + fig.to_html(full_html=False, include_plotlyjs='cdn')
+    return HTMLResponse(content=full_html)
