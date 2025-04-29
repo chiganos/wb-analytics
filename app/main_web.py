@@ -44,10 +44,9 @@ def index(request: Request):
     articles = get_articles()
     return templates.TemplateResponse("index.html", {"request": request, "articles": articles})
 
-@app.get("/api/analytics/sma/{article}", response_class=HTMLResponse)
-def sma_analysis(article: int):
-    html = sma_block.analyze_sma(DB_PATH, article)
-    return HTMLResponse(content=html)
+@app.get("/api/analytics/sma/{article}")
+def sma_analysis(article: str):
+    return sma_block.analyze_sma(DB_PATH, article)
 
 @app.get("/api/analytics/ads-baskets/{article}", response_class=HTMLResponse)
 def ads_baskets_analysis(article: int):
