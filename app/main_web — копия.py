@@ -60,7 +60,8 @@ def ads_orders_analysis(article: int):
 
 @app.get("/api/analytics/price-orders/{article}", response_class=HTMLResponse)
 def price_orders_analysis(article: int):
-    return price_orders_block.analyze_price_vs_orders(DB_PATH, article)
+    html = price_orders_block.analyze_price_impact(DB_PATH, article)
+    return html
 
 @app.get("/api/analytics/price-optimization/{article}", response_class=HTMLResponse)
 def price_optimization_analysis(article: int):

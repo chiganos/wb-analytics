@@ -1,68 +1,73 @@
-
 import sqlite3
 import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-import io
-import base64
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
 
-def analyze_price_impact(db_path: str, article: int) -> str:
-    article = int(article)
+def analyze_price_vs_orders(db_path: str, article: str):
+    try:
+        conn = sqlite3.connect(db_path)
+        query = f"SELECT date, price, orders FROM funnel WHERE article = '{article}'"
+        df = pd.read_sql(query, conn)
+        conn.close()
 
-    conn = sqlite3.connect(db_path)
-    funnel = pd.read_sql_query("SELECT * FROM funnel", conn)
-    conn.close()
+        if df.empty:
+            return HTMLResponse("<p>❌ Нет данных по артикулу.</p>", status_code=200)
 
-    funnel['date'] = pd.to_datetime(funnel['date'])
+        # Приведение типов
+        df["orders"] = pd.to_numeric(df["orders"], errors="coerce")
+        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+        df["date"] = pd.to_datetime(df["date"])
 
-    df = funnel[funnel['article'].astype(str) == str(article)].copy()
-    df = df[['price', 'orders']].dropna()
-    df = df[df['orders'] > 0]
+        df = df[["date", "price", "orders"]].dropna()
+        df = df[df["orders"] > 0]
+        df = df.sort_values("date")
 
-    if len(df) < 3:
-        return "<p>❗ Недостаточно данных для анализа (менее 3 строк с заказами).</p>"
+        if len(df) < 3:
+            return HTMLResponse("<p>❗ Недостаточно данных для анализа (менее 3 строк с заказами).</p>", status_code=200)
 
-    corr = df['price'].corr(df['orders'])
+        corr = round(df["price"].corr(df["orders"]), 2)
 
-    X = df[['price']].values
-    y = df['orders'].values
-    model = LinearRegression().fit(X, y)
-    predicted = model.predict(X)
+        if corr < -0.6:
+            comment = "🔻 <b>Сильная отрицательная связь</b> — снижение цены приводит к росту заказов"
+        elif corr < -0.3:
+            comment = "🟠 <b>Умеренная отрицательная связь</b> — цена влияет на заказы"
+        elif corr < -0.1:
+            comment = "⚠️ <b>Слабая отрицательная связь</b> — возможно влияние, но слабое"
+        else:
+            comment = "⚪ <b>Связь почти отсутствует</b> — цена не влияет на заказы"
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(df['price'], df['orders'], color='blue', alpha=0.6, label="Фактические данные")
-    ax.plot(df['price'], predicted, color='red', label="Линейная регрессия")
-    ax.set_xlabel("Цена")
-    ax.set_ylabel("Количество заказов")
-    ax.set_title(f"Зависимость цены от количества заказов\nАртикул {article}, Корреляция = {corr:.2f}")
-    ax.legend()
-    ax.grid(True)
-    fig.tight_layout()
+        # График с двумя Y-осями
+        fig = go.Figure()
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    img_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    img_tag = f"<img src='data:image/png;base64,{img_base64}' style='max-width:100%; height:auto;'>"
+        # Левая ось Y — заказы
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["orders"],
+            name="Заказы", mode="lines+markers", line=dict(color="red"),
+            yaxis="y1"
+        ))
 
-    # Комментарий
-    if corr < -0.6:
-        comment = "✅ Сильная отрицательная связь — снижение цены увеличивает заказы"
-    elif corr < -0.3:
-        comment = "➖ Умеренная отрицательная связь — есть влияние, но не абсолютное"
-    elif corr < 0:
-        comment = "⚠️ Слабая отрицательная связь — возможно влияние, но слабое"
-    elif corr > 0.3:
-        comment = "❌ Положительная корреляция — заказы растут при росте цены (редкость)"
-    else:
-        comment = "🟡 Связь почти отсутствует"
+        # Правая ось Y — цена
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["price"],
+            name="Цена", mode="lines+markers", line=dict(color="orange"),
+            yaxis="y2"
+        ))
 
-    html = f'''
-    <h3>📦 Влияние цены на количество заказов</h3>
-    <p>
-        📈 Корреляция между ценой и заказами: <b>{corr:.2f}</b><br>
-        <b>{comment}</b>
-    </p>
-    {img_tag}
-    '''
-    return html
+        fig.update_layout(
+            title="📊 Динамика цены и количества заказов по времени",
+            xaxis=dict(title="Дата"),
+            yaxis=dict(title="Заказы", side="left"),
+            yaxis2=dict(title="Цена", overlaying="y", side="right"),
+            height=400
+        )
+
+        html = f"""
+        <h3>📦 Влияние цены на количество заказов</h3>
+        <p>📈 <b>Корреляция между ценой и заказами:</b> {corr}</p>
+        <p>{comment}</p>
+        """
+
+        return HTMLResponse(html + fig.to_html(include_plotlyjs=False, full_html=False), status_code=200)
+
+    except Exception as e:
+        return HTMLResponse(f"<p>❌ Ошибка выполнения: {e}</p>", status_code=500)

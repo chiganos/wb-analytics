@@ -1,76 +1,83 @@
-
 import sqlite3
 import pandas as pd
-import matplotlib.pyplot as plt
-import io
-import base64
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
 
 def analyze_ads_impact(db_path: str, article: int) -> str:
-    article = int(article)
+    try:
+        article = str(article).strip().replace("'", "")
+        conn = sqlite3.connect(db_path)
+        ads = pd.read_sql(f"SELECT date, orders FROM ads WHERE article = '{article}'", conn)
+        funnel = pd.read_sql(f"SELECT date, orders FROM funnel WHERE article = '{article}'", conn)
+        conn.close()
 
-    conn = sqlite3.connect(db_path)
-    ads = pd.read_sql_query("SELECT * FROM ads", conn)
-    funnel = pd.read_sql_query("SELECT * FROM funnel", conn)
-    conn.close()
+        if ads.empty or funnel.empty:
+            return HTMLResponse("<p>❌ Нет данных по артикулу.</p>", status_code=200)
 
-    ads['date'] = pd.to_datetime(ads['date'])
-    funnel['date'] = pd.to_datetime(funnel['date'])
+        ads["date"] = pd.to_datetime(ads["date"])
+        funnel["date"] = pd.to_datetime(funnel["date"])
 
-    df_ads = ads[ads['article'].astype(str) == str(article)].copy()
-    df_funnel = funnel[funnel['article'].astype(str) == str(article)].copy()
-    df = df_ads.merge(df_funnel, on=['article', 'date'], how='inner')
+        df = pd.merge(funnel, ads, on="date", how="outer", suffixes=("_total", "_ads"))
+        df["orders_total"] = pd.to_numeric(df["orders_total"], errors="coerce").fillna(0)
+        df["orders_ads"] = pd.to_numeric(df["orders_ads"], errors="coerce").fillna(0)
+        df = df.dropna(subset=["date"])
+        df = df.sort_values("date")
 
-    if df.empty:
-        return "<p>❗ Нет данных по выбранному артикулу.</p>"
+        # Разделение
+        with_ads = df[df["orders_ads"] > 0]
+        without_ads = df[df["orders_ads"] == 0]
 
-    df = df.sort_values(by='date')
-    df['orders_ads'] = df['orders_x']
-    df['orders_total'] = df['orders_y']
+        avg_with = round(with_ads["orders_total"].mean(), 2) if not with_ads.empty else 0.0
+        avg_without = round(without_ads["orders_total"].mean(), 2) if not without_ads.empty else 0.0
 
-    ad_days = df[df['orders_ads'] > 0]
-    no_ad_days = df[df['orders_ads'] == 0]
+        total_days = len(df)
+        days_with_ads = len(with_ads)
+        days_without_ads = len(without_ads)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(df['date'], df['orders_total'], label='Общие заказы (funnel)', linewidth=2)
-    ax.plot(df['date'], df['orders_ads'], label='Рекламные заказы (ads)', linewidth=2)
-    ax.set_xlabel("Дата")
-    ax.set_ylabel("Количество заказов")
-    ax.set_title(f"Сравнение продаж: общие vs реклама\nАртикул {article}")
-    ax.legend()
-    ax.grid(True)
-    fig.tight_layout()
+        corr = round(df["orders_ads"].corr(df["orders_total"]), 2)
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    image_base64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    img_tag = f"<img src='data:image/png;base64,{image_base64}' style='max-width:100%; height:auto;'>"
+        # Комментарий
+        if days_with_ads < 3:
+            effect_text = "⚠️ <b>Мало дней с активной рекламой — выводы условны.</b>"
+        elif avg_with > avg_without * 1.5:
+            effect_text = "✅ <b>Реклама заметно увеличивает продажи.</b>"
+        elif avg_with > avg_without * 1.1:
+            effect_text = "➕ <b>Реклама даёт умеренный рост.</b>"
+        else:
+            effect_text = "❌ <b>Реклама почти не влияет на продажи.</b>"
 
-    total_days = len(df)
-    days_with_ads = len(ad_days)
-    days_without_ads = len(no_ad_days)
-    avg_orders_with_ads = ad_days['orders_total'].mean() if not ad_days.empty else 0
-    avg_orders_without_ads = no_ad_days['orders_total'].mean() if not no_ad_days.empty else 0
+        # График
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["orders_total"],
+            name="Общие заказы", mode="lines+markers", line=dict(color="blue")
+        ))
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["orders_ads"],
+            name="Рекламные заказы", mode="lines+markers", line=dict(color="green")
+        ))
 
-    if days_with_ads < 5:
-        comment = "⚠️ Мало дней с активной рекламой — выводы условны."
-    elif avg_orders_with_ads > avg_orders_without_ads * 1.5:
-        comment = "✅ Реклама заметно увеличивает продажи."
-    elif avg_orders_with_ads > avg_orders_without_ads * 1.1:
-        comment = "➕ Реклама даёт умеренный рост."
-    else:
-        comment = "❌ Реклама почти не влияет на продажи."
+        fig.update_layout(
+            title="📊 Сравнение рекламных и общих заказов",
+            xaxis_title="Дата",
+            yaxis_title="Количество заказов",
+            height=400
+        )
 
-    html = f'''
-    <h3>📊 Анализ влияния рекламы на общие заказы</h3>
-    <p>
-        📦 Всего дней: <b>{total_days}</b><br>
-        📢 С рекламой: <b>{days_with_ads}</b>, 🚫 Без рекламы: <b>{days_without_ads}</b><br>
-        📊 Ср. заказы без рекламы: <b>{avg_orders_without_ads:.2f}</b><br>
-        📊 Ср. заказы с рекламой: <b>{avg_orders_with_ads:.2f}</b><br>
-        <b>{comment}</b>
-    </p>
-    {img_tag}
-    '''
+        html = f"""
+        <h3>📢 Влияние рекламных заказов на общие</h3>
+        <p>
+            📦 Всего дней: <b>{total_days}</b><br>
+            📣 С рекламой: <b>{days_with_ads}</b>, 🚫 Без рекламы: <b>{days_without_ads}</b><br>
+            📈 Ср. заказы без рекламы: <b>{avg_without}</b><br>
+            📊 Ср. заказы с рекламой: <b>{avg_with}</b><br>
+            📉 Корреляция между рекламными и общими заказами: <b>{corr}</b><br>
+            {effect_text}
+        </p>
+        {fig.to_html(include_plotlyjs='cdn', full_html=False)}
+        """
 
-    return html
+        return HTMLResponse(html, status_code=200)
+
+    except Exception as e:
+        return HTMLResponse(f"<p>❌ Ошибка выполнения: {e}</p>", status_code=500)
