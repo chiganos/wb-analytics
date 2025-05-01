@@ -79,7 +79,7 @@ def ads_shows_baskets_analysis(article: int):
 
 @app.get("/api/analytics/cpm-shows/{article}", response_class=HTMLResponse)
 def cpm_to_shows_analysis(article: int):
-    html = cpm_to_shows_block.analyze_cpm_to_shows(DB_PATH, article)
+    html = cpm_to_shows_block.analyze_cpm_vs_shows(DB_PATH, article)
     return html
 
 @app.get("/api/analytics/keywords/{article}", response_class=HTMLResponse)

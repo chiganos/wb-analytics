@@ -1,120 +1,100 @@
 import sqlite3
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import io
-import base64
+from fastapi.responses import HTMLResponse
+import plotly.graph_objects as go
+import numpy as np
 
-def analyze_keywords(db_path: str, article: int) -> str:
-    article = int(article)
-
+def analyze_keywords(db_path: str, article: str):
     conn = sqlite3.connect(db_path)
-    positions = pd.read_sql_query("SELECT * FROM positions", conn)
-    funnel = pd.read_sql_query("SELECT * FROM funnel", conn)
+    positions = pd.read_sql("SELECT * FROM positions WHERE article = ?", conn, params=(article,))
+    funnel = pd.read_sql("SELECT * FROM funnel WHERE article = ?", conn, params=(article,))
     conn.close()
 
-    positions['date'] = pd.to_datetime(positions['date'])
-    funnel['date'] = pd.to_datetime(funnel['date'])
+    if positions.empty or funnel.empty:
+        return HTMLResponse("<p>❌ Недостаточно данных.</p>")
 
-    pos = positions[positions['article'].astype(str) == str(article)]
-    fun = funnel[funnel['article'].astype(str) == str(article)]
+    positions["date"] = pd.to_datetime(positions["date"])
+    funnel["date"] = pd.to_datetime(funnel["date"])
 
-    if pos.empty or fun.empty:
-        return "<p>❗ Нет данных для выбранного артикула.</p>"
+    pos_grouped = positions.groupby(["date", "search_query"]).agg({"open_card": "sum", "avg_position": "mean"}).reset_index()
+    funnel_grouped = funnel.groupby("date").agg({"cart_add": "sum"}).reset_index()
 
-    popular_keywords = (
-        pos.groupby('search_query')['open_card']
-        .sum().reset_index()
-        .query("open_card > 100")['search_query']
+    merged = pd.merge(pos_grouped, funnel_grouped, on="date", how="inner")
+
+    total_open = merged.groupby("search_query")["open_card"].sum().reset_index()
+    total_open = total_open[total_open["open_card"] > 100]
+    filtered = merged[merged["search_query"].isin(total_open["search_query"])]
+
+    if filtered.empty:
+        return HTMLResponse("<p>⚠️ Нет ключей с >100 переходами</p>")
+
+    correlations = filtered.groupby("search_query").apply(
+        lambda g: g["open_card"].corr(g["cart_add"])
+    ).reset_index(name="correlation")
+
+    total_transitions = filtered.groupby("search_query")["open_card"].sum().reset_index()
+    result = pd.merge(correlations, total_transitions, on="search_query")
+    result = result.dropna().sort_values("open_card", ascending=False).head(20)
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=result["search_query"],
+        y=result["open_card"],
+        name="Переходы",
+        marker_color="orange"
+    ))
+    fig.add_trace(go.Scatter(
+        x=result["search_query"],
+        y=result["correlation"],
+        name="Корреляция",
+        mode="lines+markers",
+        yaxis="y2",
+        line=dict(color="green")
+    ))
+
+    fig.update_layout(
+        title=f"Ключевые слова / артикул {article}",
+        xaxis_title="Ключевое слово",
+        yaxis=dict(title="Переходы"),
+        yaxis2=dict(title="Корреляция", overlaying="y", side="right", showgrid=False, range=[-1, 1]),
+        legend=dict(x=0.01, y=0.99),
+        hovermode="x unified"
     )
 
-    results = []
-    details_html = ""
+    html_blocks = []
+    top_keyword = result.sort_values("correlation", ascending=False).iloc[0]["search_query"]
+    html_top = f"<p>🔍 <b>Самое эффективное ключевое слово</b>: {top_keyword}</p>"
 
-    for keyword in popular_keywords:
-        pos_kw = pos[pos['search_query'] == keyword]
-        daily_open = pos_kw.groupby('date')['open_card'].sum().reset_index()
-        merged = pd.merge(daily_open, fun[['date', 'cart_add']], on='date', how='inner')
-        if len(merged) >= 5:
-            corr = merged['open_card'].corr(merged['cart_add'])
-            total_opens = daily_open['open_card'].sum()
-            results.append({
-                'Ключевое слово': keyword,
-                'Корреляция': round(corr, 3),
-                'Переходов всего': int(total_opens)
-            })
+    html_blocks.append(html_top)
+    html_blocks.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
+    html_blocks.append("<h3>📊 Детальный анализ по каждому ключевому слову</h3>")
 
-            images = []
+    for _, row in result.iterrows():
+        keyword = row["search_query"]
+        corr = round(row["correlation"], 3)
+        total = int(row["open_card"])
+        subset = filtered[filtered["search_query"] == keyword]
 
-            # График 1: open_card vs cart_add
-            fig1, ax1 = plt.subplots(figsize=(10, 4))
-            sns.lineplot(data=merged, x='date', y='open_card', label='Переходы (open_card)', ax=ax1)
-            sns.lineplot(data=merged, x='date', y='cart_add', label='Добавления в корзину (cart_add)', ax=ax1)
-            ax1.set_title(f"Влияние ключевого слова '{keyword}' на корзины")
-            ax1.grid(True)
-            ax1.legend()
-            fig1.tight_layout()
-            buf1 = io.BytesIO()
-            fig1.savefig(buf1, format="png")
-            plt.close(fig1)
-            images.append(base64.b64encode(buf1.getvalue()).decode("utf-8"))
+        fig_kw1 = go.Figure()
+        fig_kw1.add_trace(go.Scatter(x=subset["date"], y=subset["open_card"], name="Переходы", mode="lines+markers"))
+        fig_kw1.add_trace(go.Scatter(x=subset["date"], y=subset["cart_add"], name="Добавления в корзину", mode="lines+markers"))
+        fig_kw1.update_layout(title="Динамика переходов и корзины", xaxis_title="Дата", hovermode="x unified")
 
-            # График 2: avg_position vs open_card
-            merged2 = pos_kw[['date', 'avg_position', 'open_card']].dropna()
-            merged2 = merged2.groupby('date').agg({'avg_position': 'mean', 'open_card': 'sum'}).reset_index()
-            fig2, ax2 = plt.subplots(figsize=(7, 4))
-            sns.scatterplot(data=merged2, x='avg_position', y='open_card', ax=ax2)
-            ax2.set_title(f"Позиция vs Переходы по слову '{keyword}'")
-            ax2.grid(True)
-            fig2.tight_layout()
-            buf2 = io.BytesIO()
-            fig2.savefig(buf2, format="png")
-            plt.close(fig2)
-            images.append(base64.b64encode(buf2.getvalue()).decode("utf-8"))
+        fig_kw2 = go.Figure()
+        fig_kw2.add_trace(go.Scatter(x=subset["date"], y=subset["avg_position"], name="Позиция", mode="lines+markers"))
+        fig_kw2.update_layout(title="Динамика позиции в выдаче", xaxis_title="Дата", yaxis_title="Позиция", hovermode="x unified")
 
-            # График 3: динамика позиции
-            fig3, ax3 = plt.subplots(figsize=(10, 4))
-            sns.lineplot(data=merged2, x='date', y='avg_position', ax=ax3)
-            ax3.set_title(f"Динамика позиции в выдаче по слову '{keyword}'")
-            ax3.grid(True)
-            fig3.tight_layout()
-            buf3 = io.BytesIO()
-            fig3.savefig(buf3, format="png")
-            plt.close(fig3)
-            images.append(base64.b64encode(buf3.getvalue()).decode("utf-8"))
+        fig_kw3 = go.Figure()
+        fig_kw3.add_trace(go.Scatter(x=subset["avg_position"], y=subset["open_card"], mode="markers", name="Позиция vs Переходы"))
+        fig_kw3.update_layout(title="Позиция vs Переходы", xaxis_title="avg_position", yaxis_title="open_card")
 
-            image_tags = "".join(
-                f"<img src='data:image/png;base64,{img}' style='max-width:100%; margin-bottom:20px;'>" for img in images
-            )
+        html_blocks.append(f"""
+            <details style='margin-bottom:1em;'>
+              <summary>🔑 {keyword} — Корреляция: {corr}, Переходов: {total}</summary>
+              {fig_kw1.to_html(full_html=False, include_plotlyjs=False)}
+              {fig_kw2.to_html(full_html=False, include_plotlyjs=False)}
+              {fig_kw3.to_html(full_html=False, include_plotlyjs=False)}
+            </details>
+        """)
 
-            details_html += (
-                f"<details style='margin-bottom:20px;'>"
-                f"<summary style='font-weight:bold;'>🔑 {keyword} — Корреляция: {round(corr, 3)}, Переходов: {total_opens}</summary>"
-                f"<div style='margin-top:10px;'>{image_tags}</div>"
-                f"</details>"
-            )
-
-    result_df = pd.DataFrame(results).sort_values(by='Корреляция', ascending=False)
-    if result_df.empty:
-        return "<p>❗ Нет подходящих ключевых слов с open_card > 100</p>"
-
-    top_kw = result_df.iloc[0]['Ключевое слово']
-    top_corr = result_df.iloc[0]['Корреляция']
-    top_open = result_df.iloc[0]['Переходов всего']
-
-    table_html = "<table border='1' cellspacing='0' cellpadding='6'><tr><th>Ключевое слово</th><th>Корреляция</th><th>Переходов всего</th></tr>"
-    for _, row in result_df.iterrows():
-        table_html += f"<tr><td>{row['Ключевое слово']}</td><td>{row['Корреляция']}</td><td>{row['Переходов всего']}</td></tr>"
-    table_html += "</table>"
-
-    html = (
-        f"<h3>🔍 Анализ ключевых слов в органике</h3>"
-        f"<p>📦 Артикул: <b>{article}</b><br>"
-        f"🔠 Топ-ключевое слово: <b>{top_kw}</b><br>"
-        f"📈 Корреляция: <b>{top_corr}</b><br>"
-        f"👁️ Всего переходов: <b>{top_open}</b></p>"
-        f"<hr><h4>📋 Все ключевые слова с >100 переходами</h4>{table_html}"
-        f"<hr><h4>📊 Детальный анализ по каждому ключевому слову</h4>{details_html}"
-    )
-
-    return html
+    return HTMLResponse(content="".join(html_blocks))

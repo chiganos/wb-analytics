@@ -1,73 +1,61 @@
-
 import sqlite3
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import io
-import base64
-from sklearn.linear_model import LinearRegression
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
 
-def analyze_cpm_to_shows(db_path: str, article: int) -> str:
-    article = int(article)
-
+def analyze_cpm_vs_shows(db_path: str, article: str):
     conn = sqlite3.connect(db_path)
-    ads = pd.read_sql_query("SELECT * FROM ads", conn)
+    ads = pd.read_sql("SELECT * FROM ads WHERE article = ?", conn, params=(article,))
+    calculated = pd.read_sql("SELECT * FROM calculated WHERE article = ?", conn, params=(article,))
     conn.close()
 
-    ads['date'] = pd.to_datetime(ads['date'])
+    if ads.empty or calculated.empty:
+        return HTMLResponse("<p>❌ Недостаточно данных для анализа.</p>")
 
-    # Расчёт CPM, если его нет
-    if 'CPM' not in ads.columns or ads['CPM'].isnull().all():
-        ads['CPM'] = (ads['cost'] / ads['shows']) * 1000
+    ads["date"] = pd.to_datetime(ads["date"])
+    calculated["date"] = pd.to_datetime(calculated["date"])
 
-    df = ads[ads['article'].astype(str) == str(article)][['CPM', 'shows']].dropna()
-    df = df[df['shows'] > 200]
+    merged = pd.merge(ads, calculated[["date", "CPM"]], on="date", how="inner")
 
-    if len(df) < 5:
-        return f"<p>❗ Недостаточно данных (показов > 200): найдено {len(df)}.</p>"
+    if merged.empty or merged["shows"].sum() == 0:
+        return HTMLResponse("<p>⚠️ Недостаточно пересечений по дате между ads и calculated.</p>")
 
-    corr = df['CPM'].corr(df['shows'])
+    correlation = merged["CPM"].corr(merged["shows"])
 
-    X = df[['CPM']]
-    y = df['shows']
-    model = LinearRegression()
-    model.fit(X, y)
-    y_pred = model.predict(X)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=merged["date"],
+        y=merged["CPM"],
+        name="CPM",
+        mode="lines+markers",
+        line=dict(color="red")
+    ))
+    fig.add_trace(go.Scatter(
+        x=merged["date"],
+        y=merged["shows"],
+        name="Показы",
+        mode="lines+markers",
+        yaxis="y2",
+        line=dict(color="blue")
+    ))
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(df['CPM'], df['shows'], alpha=0.6, label="Фактические данные")
-    ax.plot(df['CPM'], y_pred, color='orange', label="Линейная регрессия")
-    ax.set_xlabel("CPM (стоимость за 1000 показов)")
-    ax.set_ylabel("Показы (shows)")
-    ax.set_title(f"CPM → Показы\nКорреляция: {corr:.2f}")
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
+    fig.update_layout(
+        title=f"Зависимость CPM от показов / артикул {article}",
+        xaxis_title="Дата",
+        yaxis=dict(title=dict(text="CPM", font=dict(color="red")), tickfont=dict(color="red")),
+        yaxis2=dict(title=dict(text="Показы", font=dict(color="blue")), tickfont=dict(color="blue"), overlaying="y", side="right"),
+        legend=dict(x=0.01, y=0.99),
+        hovermode="x unified"
+    )
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
-    img_tag = f"<img src='data:image/png;base64,{img_data}' style='max-width:100%; height:auto;'>"
-
-    if corr > 0.6:
-        comment = "✅ Высокая CPM действительно увеличивает количество показов"
-    elif corr > 0.3:
-        comment = "➕ Умеренная зависимость — CPM влияет"
-    elif corr > 0:
-        comment = "⚠️ Слабая положительная связь"
-    elif corr < -0.3:
-        comment = "❌ Отрицательная связь — выше CPM, меньше показов"
+    comment = ""
+    if correlation > 0.5:
+        comment = "✅ Сильная положительная связь — при росте показов увеличивается CPM"
+    elif correlation < -0.5:
+        comment = "🔻 Сильная отрицательная связь — CPM падает при увеличении показов"
     else:
-        comment = "ℹ️ Связь практически отсутствует"
+        comment = "🟡 Связь слабая или отсутствует"
 
-    html = f'''
-    <h3>📊 Влияние CPM на количество показов</h3>
-    <p>
-        📈 Корреляция CPM → shows: <b>{corr:.2f}</b><br>
-        <b>{comment}</b>
-    </p>
-    {img_tag}
-    '''
-    return html
+    summary = f"<p>📈 <b>Корреляция CPM и показов:</b> {round(correlation, 2)}</p><p>{comment}</p>"
+
+    return HTMLResponse(content=summary + fig.to_html(full_html=False, include_plotlyjs='cdn'))

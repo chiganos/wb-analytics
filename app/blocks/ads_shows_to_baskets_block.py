@@ -1,66 +1,67 @@
-
 import sqlite3
 import pandas as pd
-import matplotlib.pyplot as plt
-import io
-import base64
-from sklearn.linear_model import LinearRegression
+import plotly.graph_objects as go
+from fastapi.responses import HTMLResponse
+import numpy as np
 
-def analyze_ads_shows_to_baskets(db_path: str, article: int) -> str:
-    article = int(article)
-
+def analyze_ads_shows_to_baskets(db_path: str, article: str):
     conn = sqlite3.connect(db_path)
-    ads = pd.read_sql_query("SELECT * FROM ads", conn)
+    ads = pd.read_sql("SELECT * FROM ads WHERE article = ?", conn, params=(article,))
     conn.close()
 
-    ads['date'] = pd.to_datetime(ads['date'])
-    df = ads[ads['article'].astype(str) == str(article)][['shows', 'baskets']].dropna()
-    df = df[df['shows'] > 200]
+    if ads.empty or "shows" not in ads.columns or "baskets" not in ads.columns:
+        return HTMLResponse("<p>❌ Недостаточно данных для анализа.</p>", status_code=200)
 
-    if len(df) < 5:
-        return f"<p>❗ Недостаточно данных (показов > 200): найдено {len(df)}.</p>"
+    ads["date"] = pd.to_datetime(ads["date"])
+    ads = ads.sort_values("date")
 
-    corr = df['shows'].corr(df['baskets'])
-
-    X = df[['shows']]
-    y = df['baskets']
-    model = LinearRegression()
-    model.fit(X, y)
-    y_pred = model.predict(X)
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.scatter(df['shows'], df['baskets'], alpha=0.6, label="Фактические данные")
-    ax.plot(df['shows'], y_pred, color='green', label="Линейная регрессия")
-    ax.set_xlabel("Показы рекламы (shows)")
-    ax.set_ylabel("Добавления в корзину (baskets)")
-    ax.set_title(f"Показы рекламы → baskets\nКорреляция: {corr:.2f}")
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png")
-    plt.close(fig)
-    img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
-    img_tag = f"<img src='data:image/png;base64,{img_data}' style='max-width:100%; height:auto;'>"
+    filtered = ads[(ads["shows"] > 200) & (ads["baskets"] > 0)]
+    corr = filtered["shows"].corr(filtered["baskets"]) if len(filtered) > 1 else 0
+    corr = round(corr, 2)
 
     if corr > 0.6:
-        comment = "✅ Сильная положительная связь — показы хорошо влияют на добавления"
+        comment = "✅ <b>Сильная положительная связь</b> — показы ведут к росту корзин"
     elif corr > 0.3:
-        comment = "➕ Умеренная положительная связь"
-    elif corr > 0:
-        comment = "⚠️ Слабая положительная связь"
-    elif corr < -0.3:
-        comment = "❌ Отрицательная связь — больше показов → меньше корзин"
+        comment = "🟢 Умеренная положительная связь"
+    elif corr > 0.1:
+        comment = "🟡 Слабая связь"
+    elif corr > -0.1:
+        comment = "🟡 <b>Связь почти отсутствует</b>"
+    elif corr > -0.3:
+        comment = "🟠 Слабая отрицательная связь"
+    elif corr > -0.6:
+        comment = "🔻 Умеренная отрицательная связь"
     else:
-        comment = "ℹ️ Связь практически отсутствует"
+        comment = "❌ <b>Сильная отрицательная связь</b> — увеличение показов уменьшает корзины"
 
-    html = f'''
-    <h3>📊 Влияние показов рекламы на добавления в корзину по рекламе</h3>
-    <p>
-        📈 Корреляция shows → baskets: <b>{corr:.2f}</b><br>
-        <b>{comment}</b>
-    </p>
-    {img_tag}
-    '''
-    return html
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ads["date"], y=ads["shows"],
+        mode="lines+markers",
+        name="Показы",
+        line=dict(color="royalblue")
+    ))
+    fig.add_trace(go.Scatter(
+        x=ads["date"], y=ads["baskets"],
+        mode="lines+markers",
+        name="Корзины",
+        yaxis="y2",
+        line=dict(color="orangered")
+    ))
+
+    fig.update_layout(
+        title=f"Влияние показов на корзины / артикул {article}",
+        xaxis=dict(title="Дата"),
+        yaxis=dict(title="Показы", side="left"),
+        yaxis2=dict(title="Корзины", overlaying="y", side="right", showgrid=False),
+        legend=dict(x=0.01, y=0.99),
+        hovermode="x unified"
+    )
+
+    html_comment = f"""
+    <p>📉 <b>Корреляция между показами и корзинами</b>: {corr}</p>
+    <p>{comment}</p>
+    <p>Фильтрация: показы > 200 и корзины > 0</p>
+    """
+
+    return HTMLResponse(content=html_comment + fig.to_html(full_html=False, include_plotlyjs='cdn'))
