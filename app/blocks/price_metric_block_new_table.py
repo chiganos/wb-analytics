@@ -35,7 +35,7 @@ def render_price_metric_block(article_id: int, db_path: str) -> str:
     bins = pd.interval_range(start=int(min_price) - 1, end=int(max_price) + 100, freq=100, closed="right")
     df["price_range"] = pd.cut(df["price"], bins)
 
-    grouped = df.groupby("price_range", observed=True).agg(
+    grouped = df.groupby("price_range").agg(
         avg_profit=("profit_per_order", "mean"),
         avg_orders=("orders", "mean"),
         days=("date", "nunique"),
@@ -46,8 +46,9 @@ def render_price_metric_block(article_id: int, db_path: str) -> str:
     ).reset_index()
 
     grouped = grouped[grouped["days"] >= 3]
-    grouped["price_range"] = grouped["price_range"].apply(lambda x: f"{int(x.left+1)}–{int(x.right)} ₽")
+    grouped["range_start"] = grouped["price_range"].apply(lambda x: x.left)
 
+    # Новая логика
     cost_price = float(cost_df.iloc[0]["cost_price"]) if not cost_df.empty else 90
     stock = int(stock_df.iloc[0]["stocks_wb"]) if not stock_df.empty else 500
     avg_buyout = float(buyout_df.iloc[0]["avg_buyout_percent"]) if not buyout_df.empty else 1.0
@@ -63,49 +64,18 @@ def render_price_metric_block(article_id: int, db_path: str) -> str:
     grouped["storage_cost"] = (grouped["days_to_sell"] / 2) * stock * storage_cost_per_day
     grouped["net_profit"] = grouped["npv_profit"] - grouped["storage_cost"]
     grouped["profit_per_day"] = grouped["nominal_profit"] / grouped["days_to_sell"]
-    grouped["avg_spend_per_day"] = grouped["avg_cost"]
+
+    grouped = grouped.round(1)
 
     grouped = grouped[[
-        "price_range", "avg_profit", "avg_orders", "avg_sales", "days", "days_to_sell", "avg_spend_per_day",
-        "avg_cpm", "avg_margin", "avg_roi", "profit_per_day", "nominal_profit",
-        "npv_profit", "storage_cost", "net_profit"
+        "price_range", "avg_profit", "avg_orders", "avg_sales", "days_to_sell", "profit_per_day",
+        "nominal_profit", "npv_profit", "storage_cost", "net_profit"
     ]]
 
     grouped.columns = [
         "Диапазон цен", "Средняя прибыль с заказа", "Средние заказы в день", "Средние продажи в день",
-        "Дней в диапазоне", "Дней до распродажи", "Средний расход рекламы в день",
-        "CPM", "Маржа", "ROI", "Номинальная прибыль в день", "Номинальная прибыль всего",
-        "Реальная прибыль (с учетом инфляции)", "Стоимость хранения", "Чистая прибыль (- инфляция и хранение)"
+        "Дней до распродажи", "Номинальная прибыль в день", "Номинальная прибыль",
+        "Реальная прибыль (NPV)", "Стоимость хранения", "Чистая прибыль (NPV - хранение)"
     ]
 
-    for col in grouped.columns:
-        if col in ["Средняя прибыль с заказа", "Средние заказы в день", "Средние продажи в день", "Маржа"]:
-            grouped[col] = grouped[col].map(lambda x: f"{x:.1f}".rstrip("0").rstrip(".") if isinstance(x, float) else x)
-        elif grouped[col].dtype.kind in "f":
-            grouped[col] = grouped[col].round(0).astype(int)
-
-    return """
-<style>
-table.dataframe {
-    border-collapse: collapse;
-    width: 100%;
-    font-family: sans-serif;
-    font-size: 13px;
-}
-table.dataframe th {
-    background-color: #f4f4f4;
-    font-weight: bold;
-    text-align: center;
-    padding: 8px;
-    border: 1px solid #ccc;
-}
-table.dataframe td {
-    padding: 6px;
-    text-align: center;
-    border: 1px solid #e0e0e0;
-}
-table.dataframe tbody tr:nth-child(even) {
-    background-color: #fafafa;
-}
-</style>
-""" + "<h3 style='font-family: sans-serif;'>📊 Анализ по диапазонам цен</h3>" + grouped.to_html(index=False, border=1, justify="center", classes="dataframe")
+    return grouped.to_html(index=False, classes="dataframe", border=0)

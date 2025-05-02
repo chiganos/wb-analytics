@@ -14,6 +14,8 @@ def analyze_price_conversion(db_path: str, article: str):
 
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
+    first_valid_date = df[df["orders"] > 0]["date"].min()
+    df = df[df["date"] >= first_valid_date]
 
     # Расчёт корреляции между ценой и заказами
     corr = df["price"].corr(df["orders"])

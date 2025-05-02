@@ -12,6 +12,7 @@ from app.blocks import (
     ads_impact_block,
     price_orders_block,
     price_optimization_block,
+    last_date_block,
     price_conversion_block,
     ads_shows_to_baskets_block,
     cpm_to_shows_block,
@@ -90,6 +91,11 @@ def keyword_analysis(article: int):
 @app.get("/api/analytics/price-metric/{article}", response_class=HTMLResponse)
 def price_metric_analysis(article: int):
     html = price_metric_block.render_price_metric_block(article, DB_PATH)
+    return html
+    
+@app.get("/api/analytics/last-date/{article}", response_class=HTMLResponse)
+def price_metric_analysis(article: int):
+    html = last_date_block.render_last_date_block(article, DB_PATH)
     return html
 
 

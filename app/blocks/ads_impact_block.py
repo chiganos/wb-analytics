@@ -20,6 +20,8 @@ def analyze_ads_impact(db_path: str, article: int) -> str:
         df = pd.merge(funnel, ads, on="date", how="outer", suffixes=("_total", "_ads"))
         df["orders_total"] = pd.to_numeric(df["orders_total"], errors="coerce").fillna(0)
         df["orders_ads"] = pd.to_numeric(df["orders_ads"], errors="coerce").fillna(0)
+        first_valid_date = df[df["orders_total"] > 0]["date"].min()
+        df = df[df["date"] >= first_valid_date]
         df = df.dropna(subset=["date"])
         df = df.sort_values("date")
 
