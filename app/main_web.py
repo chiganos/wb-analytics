@@ -17,6 +17,7 @@ from app.blocks import (
     ads_shows_to_baskets_block,
     cpm_to_shows_block,
     keyword_analysis_block,
+    income_summary_block,
     price_metric_block,
 )
 from app.routes import gpt_router, combined
@@ -94,8 +95,13 @@ def price_metric_analysis(article: int):
     return html
     
 @app.get("/api/analytics/last-date/{article}", response_class=HTMLResponse)
-def price_metric_analysis(article: int):
+def last_date_analysis(article: int):
     html = last_date_block.render_last_date_block(article, DB_PATH)
+    return html
+    
+@app.get("/api/analytics/income-summary/{article}", response_class=HTMLResponse)
+def income_summary_analysis(article: int):
+    html = income_summary_block.render_income_summary_block(DB_PATH)
     return html
 
 
